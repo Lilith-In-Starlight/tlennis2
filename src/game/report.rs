@@ -1,51 +1,46 @@
 use crate::{player::PlayerId, team::TeamId, Data};
 use std::fmt::Write;
 
-use super::{Game, GameSpace, HomeOrAway};
+use super::{Game, Space};
 
 #[derive(Debug)]
 pub struct Report {
-    home: TeamId,
-    away: TeamId,
+    home: PlayerStateSnapshot,
+    away: PlayerStateSnapshot,
 
-    home_score: usize,
-    away_score: usize,
-
-    current_away_player: PlayerId,
-    current_home_player: PlayerId,
-
-    current_away_space: GameSpace,
-    current_home_space: GameSpace,
-
-    ball_direction: Option<GameSpace>,
+    ball_direction: Option<Space>,
 
     comment: String,
 }
 
+#[derive(Debug)]
+pub struct PlayerStateSnapshot {
+    team: TeamId,
+    player: PlayerId,
+    score: usize,
+    space: Space,
+}
+
 impl Report {
     pub fn take_snapshot(game: &Game, data: &Data) -> Self {
-        let home = game.get_team(HomeOrAway::Home);
-        let away = game.get_team(HomeOrAway::Away);
-
-        let current_away_player = away.get_current_player(data).unwrap();
-        let current_home_player = home.get_current_player(data).unwrap();
-        let current_away_space = game.get_team_space(HomeOrAway::Home);
-        let current_home_space = game.get_team_space(HomeOrAway::Away);
+        let home = PlayerStateSnapshot {
+            team: game.home.team,
+            player: game.home.team.get_current_player(data).unwrap(),
+            score: game.home.score,
+            space: game.home.space,
+        };
+        let away = PlayerStateSnapshot {
+            team: game.away.team,
+            player: game.away.team.get_current_player(data).unwrap(),
+            score: game.away.score,
+            space: game.away.space,
+        };
 
         let ball_direction = Some(game.ball_direction);
-
-        let home_score = game.get_team_score(HomeOrAway::Home);
-        let away_score = game.get_team_score(HomeOrAway::Away);
 
         Self {
             home,
             away,
-            home_score,
-            away_score,
-            current_away_player,
-            current_home_player,
-            current_away_space,
-            current_home_space,
             ball_direction,
             comment: String::new(),
         }
@@ -67,20 +62,16 @@ impl Report {
         writeln!(
             output,
             "{}: {}",
-            data.get_player(&self.current_home_player)
-                .unwrap()
-                .get_name(),
-            self.home_score,
+            data.get_player(&self.home.player).unwrap().get_name(),
+            self.home.score,
         )
         .unwrap();
 
         writeln!(
             output,
             "{}: {}",
-            data.get_player(&self.current_away_player)
-                .unwrap()
-                .get_name(),
-            self.away_score,
+            data.get_player(&self.away.player).unwrap().get_name(),
+            self.away.score,
         )
         .unwrap();
 

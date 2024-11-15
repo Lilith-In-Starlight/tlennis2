@@ -21,13 +21,13 @@ pub trait RunGame {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum GameSpace {
+enum Space {
     First,
     Middle,
     Third,
 }
 
-impl GameSpace {
+impl Space {
     pub fn farthest(self) -> Self {
         match self {
             Self::First => Self::Third,
@@ -42,29 +42,29 @@ impl GameSpace {
     }
 }
 
-impl Distribution<GameSpace> for Standard {
-    fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> GameSpace {
+impl Distribution<Space> for Standard {
+    fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> Space {
         match rng.gen_range::<usize, _>(0..=2) {
-            0 => GameSpace::First,
-            1 => GameSpace::Middle,
-            2 => GameSpace::Third,
+            0 => Space::First,
+            1 => Space::Middle,
+            2 => Space::Third,
             _ => unreachable!(),
         }
     }
 }
 
 enum GameState {
-    Serving(HomeOrAway),
-    Playing(HomeOrAway),
+    Serving(Side),
+    Playing(Side),
 }
 
 #[derive(Clone, Copy)]
-enum HomeOrAway {
+enum Side {
     Home,
     Away,
 }
 
-impl HomeOrAway {
+impl Side {
     pub const fn opposite(self) -> Self {
         match self {
             Self::Home => Self::Away,
@@ -74,19 +74,21 @@ impl HomeOrAway {
 }
 
 pub struct Game {
-    home: TeamId,
-    away: TeamId,
-    home_score: usize,
-    away_score: usize,
-    home_space: GameSpace,
-    away_space: GameSpace,
-    ball_direction: GameSpace,
+    home: PlayerState,
+    away: PlayerState,
+    ball_direction: Space,
 
     state: GameState,
 
     reports: VecDeque<Report>,
 
     weather: Weather,
+}
+
+pub struct PlayerState {
+    team: TeamId,
+    space: Space,
+    score: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -116,46 +118,32 @@ impl Game {
     }
     pub const fn new(home: TeamId, away: TeamId, weather: Weather) -> Self {
         Self {
-            home,
-            away,
-            home_score: 0,
-            away_score: 0,
-            home_space: GameSpace::Middle,
-            away_space: GameSpace::Middle,
-            ball_direction: GameSpace::Middle,
-            state: GameState::Serving(HomeOrAway::Home),
+            home: PlayerState {
+                team: home,
+                space: Space::Middle,
+                score: 0,
+            },
+            away: PlayerState {
+                team: away,
+                space: Space::Middle,
+                score: 0,
+            },
+            ball_direction: Space::Middle,
+            state: GameState::Serving(Side::Home),
             reports: VecDeque::new(),
             weather,
         }
     }
-    const fn get_team(&self, team: HomeOrAway) -> TeamId {
+    const fn get_team(&self, team: Side) -> &PlayerState {
         match team {
-            HomeOrAway::Home => self.home,
-            HomeOrAway::Away => self.away,
+            Side::Home => &self.home,
+            Side::Away => &self.away,
         }
     }
-    const fn get_team_score(&self, team: HomeOrAway) -> usize {
+    fn get_team_mut(&mut self, team: Side) -> &mut PlayerState {
         match team {
-            HomeOrAway::Home => self.home_score,
-            HomeOrAway::Away => self.away_score,
-        }
-    }
-    fn get_team_score_mut(&mut self, team: HomeOrAway) -> &mut usize {
-        match team {
-            HomeOrAway::Home => &mut self.home_score,
-            HomeOrAway::Away => &mut self.away_score,
-        }
-    }
-    const fn get_team_space(&self, team: HomeOrAway) -> GameSpace {
-        match team {
-            HomeOrAway::Home => self.home_space,
-            HomeOrAway::Away => self.away_space,
-        }
-    }
-    fn get_team_space_mut(&mut self, team: HomeOrAway) -> &mut GameSpace {
-        match team {
-            HomeOrAway::Home => &mut self.home_space,
-            HomeOrAway::Away => &mut self.away_space,
+            Side::Home => &mut self.home,
+            Side::Away => &mut self.away,
         }
     }
 }
@@ -166,52 +154,57 @@ impl RunGame for Game {
     fn tick(&mut self, data: &mut Data) {
         match self.state {
             GameState::Serving(serving_side) => {
-                *self.get_team_space_mut(serving_side) = GameSpace::Middle;
-                *self.get_team_space_mut(serving_side.opposite()) = GameSpace::Middle;
+                let (serving_state, receiving_state) = match serving_side {
+                    Side::Home => (&mut self.home, &mut self.away),
+                    Side::Away => (&mut self.away, &mut self.home),
+                };
+                serving_state.space = Space::Middle;
+                receiving_state.space = Space::Middle;
                 self.ball_direction = thread_rng().gen();
 
-                let serving_player = self
-                    .get_team(serving_side)
+                let serving_player_name = serving_state
+                    .team
                     .get_current_player(data)
+                    .and_then(|x| data.get_player(&x))
+                    .map(|x| x.get_name())
                     .unwrap();
 
-                self.report(
-                    format!(
-                        "{} serves!",
-                        data.get_player(&serving_player).unwrap().get_name()
-                    ),
-                    data,
-                );
+                self.report(format!("{} serves!", serving_player_name), data);
 
                 self.state = GameState::Playing(serving_side.opposite());
             }
             GameState::Playing(hitting_side) => {
-                let hitting_player = self
-                    .get_team(hitting_side)
-                    .get_current_player(data)
-                    .unwrap();
+                let (hitter_state, _) = match hitting_side {
+                    Side::Home => (&mut self.home, &mut self.away),
+                    Side::Away => (&mut self.away, &mut self.home),
+                };
 
-                if self.get_team_space(hitting_side) == self.ball_direction {
+                let hitting_player = hitter_state.team.get_current_player(data).unwrap();
+
+                if hitter_state.space == self.ball_direction {
                     if data
                         .get_player(&hitting_player)
                         .unwrap()
                         .distraction_check()
                     {
-                        *self.get_team_space_mut(hitting_side) = thread_rng().gen();
+                        hitter_state.space = thread_rng().gen();
                     }
                 } else if data.get_player(&hitting_player).unwrap().speed_check() {
-                    *self.get_team_space_mut(hitting_side) = self.ball_direction;
+                    hitter_state.space = self.ball_direction;
                 } else {
-                    *self.get_team_space_mut(hitting_side) = thread_rng().gen();
+                    hitter_state.space = thread_rng().gen();
                 }
 
                 let weather_result = self.weather.pre_hit(hitting_side, self, data);
 
                 // This might change after weather events
-                let hitting_player = self
-                    .get_team(hitting_side)
-                    .get_current_player(data)
-                    .unwrap();
+
+                let (hitter_state, _) = match hitting_side {
+                    Side::Home => (&mut self.home, &mut self.away),
+                    Side::Away => (&mut self.away, &mut self.home),
+                };
+
+                let hitting_player = hitter_state.team.get_current_player(data).unwrap();
 
                 match weather_result {
                     WeatherResult::Prevent => {
@@ -222,13 +215,15 @@ impl RunGame for Game {
                             ),
                             data,
                         );
-                        *self.get_team_score_mut(hitting_side.opposite()) += 1;
+                        self.get_team_mut(hitting_side.opposite()).score += 1;
+
                         self.report(
                             format!(
                                 "{} scores!",
                                 data.get_player(
                                     &self
                                         .get_team(hitting_side.opposite())
+                                        .team
                                         .get_current_player(data)
                                         .unwrap()
                                 )
@@ -240,7 +235,7 @@ impl RunGame for Game {
                         self.state = GameState::Serving(hitting_side.opposite());
                     }
                     WeatherResult::Nothing => {
-                        if self.get_team_space(hitting_side) == self.ball_direction {
+                        if hitter_state.space == self.ball_direction {
                             if data.get_player(&hitting_player).unwrap().control_check() {
                                 self.ball_direction = self.ball_direction.farthest();
                             } else {
@@ -262,7 +257,7 @@ impl RunGame for Game {
                                 ),
                                 data,
                             );
-                            *self.get_team_score_mut(hitting_side.opposite()) += 1;
+                            self.get_team_mut(hitting_side.opposite()).score += 1;
                             self.report(
                                 format!(
                                     "{} scores!",
@@ -285,15 +280,19 @@ impl RunGame for Game {
 }
 
 impl Weather {
-    fn pre_hit(self, hitter: HomeOrAway, game: &mut Game, data: &mut Data) -> WeatherResult {
+    fn pre_hit(self, hitter: Side, game: &mut Game, data: &mut Data) -> WeatherResult {
+        let (hitter_state, _) = match hitter {
+            Side::Home => (&mut game.home, &mut game.away),
+            Side::Away => (&mut game.away, &mut game.home),
+        };
         match self {
             Self::None => WeatherResult::Nothing,
             Self::Feedback => {
                 if thread_rng().gen::<f64>() < 0.05 {
-                    let away_id = game.away.get_current_player(data).unwrap();
-                    let home_id = game.home.get_current_player(data).unwrap();
-                    *game.home.get_current_player_mut(data).unwrap() = away_id;
-                    *game.away.get_current_player_mut(data).unwrap() = home_id;
+                    let away_id = game.away.team.get_current_player(data).unwrap();
+                    let home_id = game.home.team.get_current_player(data).unwrap();
+                    *game.home.team.get_current_player_mut(data).unwrap() = away_id;
+                    *game.away.team.get_current_player_mut(data).unwrap() = home_id;
                     game.report(
                         format!(
                             "{} has been feedbacked with {}!",
@@ -307,8 +306,13 @@ impl Weather {
             }
             Self::Reverb => {
                 if thread_rng().gen::<f64>() < 0.05 {
-                    data.get_team_mut(&game.home).unwrap().shuffle_players();
-                    data.get_team_mut(&game.away).unwrap().shuffle_players();
+                    data.get_team_mut(&game.home.team)
+                        .unwrap()
+                        .shuffle_players();
+                    data.get_team_mut(&game.away.team)
+                        .unwrap()
+                        .shuffle_players();
+
                     game.report("The teams are caught in the reverb!!".to_string(), data);
                 }
 
@@ -317,13 +321,13 @@ impl Weather {
             Self::Observation => {
                 if thread_rng().gen::<f64>() < 0.05 {
                     let old_player = data
-                        .get_team(&game.get_team(hitter))
+                        .get_team(&hitter_state.team)
                         .and_then(Team::get_current_player)
                         .unwrap();
 
                     let new_player = data.new_player();
                     *data
-                        .get_team_mut(&game.get_team(hitter))
+                        .get_team_mut(&hitter_state.team)
                         .and_then(|x| x.get_current_player_mut())
                         .unwrap() = new_player;
 
@@ -346,7 +350,7 @@ impl Weather {
                     WeatherResult::Prevent
                 } else if thread_rng().gen::<f64>() < 0.1 {
                     let hitter = data
-                        .get_team(&game.get_team(hitter))
+                        .get_team(&hitter_state.team)
                         .and_then(Team::get_current_player)
                         .unwrap();
 
