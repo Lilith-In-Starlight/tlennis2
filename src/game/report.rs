@@ -1,7 +1,7 @@
 use crate::{player::PlayerId, team::TeamId, Data};
 use std::fmt::Write;
 
-use super::{Game, Space};
+use super::{Game, Space, Weather};
 
 #[derive(Debug)]
 pub struct Report {
@@ -10,7 +10,8 @@ pub struct Report {
 
     ball_direction: Option<Space>,
 
-    comment: String,
+    pub comment: String,
+    weather: Weather,
 }
 
 #[derive(Debug)]
@@ -43,6 +44,7 @@ impl Report {
             away,
             ball_direction,
             comment: String::new(),
+            weather: game.weather,
         }
     }
 
@@ -58,7 +60,7 @@ impl Report {
 
     pub fn get_text(&self, data: &Data) -> String {
         let mut output = String::new();
-        writeln!(output, "-------------------------").unwrap();
+        writeln!(output, "---------------------[{}]", self.weather).unwrap();
         writeln!(
             output,
             "{}: {}",

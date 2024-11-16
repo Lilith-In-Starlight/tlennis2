@@ -1,5 +1,5 @@
 use rand::prelude::SliceRandom;
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use uuid::Uuid;
 
 use crate::{player::PlayerId, Data};
@@ -22,7 +22,7 @@ impl TeamId {
         }
     }
     pub fn get_current_player(&self, data: &Data) -> Option<PlayerId> {
-        (data.get_team(self)).and_then(|x| x.get_current_player())
+        (data.get_team(self)).and_then(Team::get_current_player)
     }
 
     pub fn get_current_player_mut<'a>(&self, data: &'a mut Data) -> Option<&'a mut PlayerId> {
@@ -40,10 +40,10 @@ impl Team {
         self.players.get_mut(self.current_player)
     }
 
-    pub fn random_team(name: String, data: &mut Data) -> Self {
+    pub fn random_team<R: Rng>(name: String, data: &mut Data, rng: &mut R) -> Self {
         let mut players = vec![];
-        for _ in 0..=thread_rng().gen_range(6..12) {
-            players.push(data.new_player())
+        for _ in 0..=rng.gen_range(6..12) {
+            players.push(data.new_player(rng));
         }
 
         Self {
@@ -52,7 +52,7 @@ impl Team {
             current_player: 0,
         }
     }
-    pub fn shuffle_players(&mut self) {
-        self.players.shuffle(&mut thread_rng())
+    pub fn shuffle_players<R: Rng>(&mut self, rng: &mut R) {
+        self.players.shuffle(rng);
     }
 }

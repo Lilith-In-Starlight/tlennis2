@@ -1,4 +1,4 @@
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use uuid::Uuid;
 
 use crate::NameGenerator;
@@ -20,32 +20,32 @@ impl Player {
         &self.name
     }
 
-    pub(super) fn new(name_generator: &NameGenerator) -> (PlayerId, Player) {
+    pub(super) fn new<R: Rng>(name_generator: &NameGenerator, rng: &mut R) -> (PlayerId, Self) {
         let new_id = PlayerId {
             uuid: Uuid::new_v4(),
         };
 
         let new_player = Self {
-            name: name_generator.generate(),
-            speed: thread_rng().gen(),
-            control: thread_rng().gen(),
-            distractability: thread_rng().gen::<f64>().powi(2),
+            name: name_generator.generate(rng),
+            speed: rng.gen(),
+            control: rng.gen(),
+            distractability: rng.gen::<f64>().powi(2),
         };
 
         (new_id, new_player)
     }
 
     /// Successful if player is not distracted
-    pub fn distraction_check(&self) -> bool {
-        thread_rng().gen::<f64>() < self.distractability
+    pub fn distraction_check<R: Rng>(&self, rng: &mut R) -> bool {
+        rng.gen::<f64>() < self.distractability
     }
 
     /// Successful if player is fast enough
-    pub fn speed_check(&self) -> bool {
-        thread_rng().gen::<f64>() > self.speed
+    pub fn speed_check<R: Rng>(&self, rng: &mut R) -> bool {
+        rng.gen::<f64>() > self.speed
     }
     /// Successful if player has control
-    pub fn control_check(&self) -> bool {
-        thread_rng().gen::<f64>() > self.control
+    pub fn control_check<R: Rng>(&self, rng: &mut R) -> bool {
+        rng.gen::<f64>() > self.control
     }
 }
