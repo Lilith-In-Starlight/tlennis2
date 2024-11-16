@@ -55,7 +55,8 @@ impl Distribution<Space> for Standard {
 
 enum GameState {
     Serving(Side),
-    Playing(Side),
+    PreHit(Side),
+    Hit(Side, WeatherResult),
 }
 
 #[derive(Clone, Copy)]
@@ -171,9 +172,9 @@ impl RunGame for Game {
 
                 self.report(format!("{} serves!", serving_player_name), data);
 
-                self.state = GameState::Playing(serving_side.opposite());
+                self.state = GameState::PreHit(serving_side.opposite());
             }
-            GameState::Playing(hitting_side) => {
+            GameState::PreHit(hitting_side) => {
                 let (hitter_state, _) = match hitting_side {
                     Side::Home => (&mut self.home, &mut self.away),
                     Side::Away => (&mut self.away, &mut self.home),
@@ -197,9 +198,10 @@ impl RunGame for Game {
 
                 let weather_result = self.weather.pre_hit(hitting_side, self, data);
 
-                // This might change after weather events
-
-                let (hitter_state, _) = match hitting_side {
+                self.state = GameState::Hit(hitting_side, weather_result);
+            }
+            GameState::Hit(hitting_side, weather_result) => {
+                let (hitter_state, other_state) = match hitting_side {
                     Side::Home => (&mut self.home, &mut self.away),
                     Side::Away => (&mut self.away, &mut self.home),
                 };
@@ -248,7 +250,7 @@ impl RunGame for Game {
                                 ),
                                 data,
                             );
-                            self.state = GameState::Playing(hitting_side.opposite());
+                            self.state = GameState::PreHit(hitting_side.opposite());
                         } else {
                             self.report(
                                 format!(
@@ -371,6 +373,7 @@ impl Weather {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum WeatherResult {
     Prevent,
     Nothing,

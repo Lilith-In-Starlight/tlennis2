@@ -3,7 +3,7 @@ mod player;
 mod team;
 
 use game::{Game, RunGame, Weather};
-use rand::prelude::SliceRandom;
+use rand::{prelude::SliceRandom, thread_rng, Rng};
 use std::{collections::HashMap, time::Duration};
 
 use player::{Player, PlayerId};
@@ -77,7 +77,7 @@ fn main() {
     let home = data.add_team("The Speedles".to_owned());
     let away = data.add_team("The Spabbles".to_owned());
 
-    let mut game = Game::new(home, away, Weather::Observation);
+    let mut game = Game::new(home, away, thread_rng().gen());
 
     loop {
         while let Some(report) = game.pop_report() {
