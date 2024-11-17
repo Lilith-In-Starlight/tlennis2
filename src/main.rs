@@ -66,9 +66,9 @@ impl Data {
 
 fn main() {
     let mut rng = ChaCha20Rng::from_entropy();
-    let names = include_str!("../../data/names.txt");
+    let names = include_str!("names.txt");
     let names = names.lines().map(ToOwned::to_owned).collect();
-    let last_names = include_str!("../../data/lastnames.txt");
+    let last_names = include_str!("lastnames.txt");
     let last_names = last_names.lines().map(ToOwned::to_owned).collect();
 
     let name_generator = NameGenerator { names, last_names };
